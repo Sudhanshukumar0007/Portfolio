@@ -52,7 +52,7 @@ Follow the local workflow instructions below to spin up the development instance
 ### 1. Clone and Initialize
 ```bash
 git clone <repository-url>
-cd portfolio-frontend
+cd frontend
 npm install
 ```
 
