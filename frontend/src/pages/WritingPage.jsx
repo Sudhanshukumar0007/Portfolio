@@ -38,7 +38,10 @@ export default function WritingPage() {
           id: item.guid || item.link,
           title: item.title?.replace(/^#+\s*/, '').trim(), // strip leading markdown # 
           brief: item.description,
-          coverImage: item.thumbnail ? { url: item.thumbnail } : null,
+          // rss2json puts Hashnode cover in enclosure.link (thumbnail is empty)
+          coverImage: (item.enclosure?.link || item.thumbnail)
+            ? { url: item.enclosure?.link || item.thumbnail }
+            : null,
           publishedAt: item.pubDate || null,
           url: item.link,
           tags: (item.categories || []).map((c) => ({ name: c })),

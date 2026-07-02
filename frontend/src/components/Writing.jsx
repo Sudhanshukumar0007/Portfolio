@@ -34,7 +34,10 @@ export default function Writing() {
           id: item.guid || item.link,
           title: item.title?.replace(/^#+\s*/, '').trim(),
           brief: item.description,
-          coverImage: item.thumbnail ? { url: item.thumbnail } : null,
+          // rss2json puts Hashnode cover in enclosure.link (thumbnail is empty)
+          coverImage: (item.enclosure?.link || item.thumbnail)
+            ? { url: item.enclosure?.link || item.thumbnail }
+            : null,
           publishedAt: item.pubDate || null,
           readTimeInMinutes: Math.max(1, Math.round((item.description || '').split(/\s+/).length / 200)),
           url: item.link,
