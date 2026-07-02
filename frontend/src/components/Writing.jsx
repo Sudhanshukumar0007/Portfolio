@@ -4,27 +4,8 @@ import { Link } from 'react-router-dom';
 import styles from './Writing.module.css';
 
 const BLOG_HOST = "backpropdiaries.hashnode.dev";
-
-const FETCH_POSTS_QUERY = `
-  query GetPosts($host: String!) {
-    publication(host: $host) {
-      posts(first: 6) {
-        edges {
-          node {
-            id
-            title
-            brief
-            coverImage { url }
-            publishedAt
-            readTimeInMinutes
-            tags { name }
-            url
-          }
-        }
-      }
-    }
-  }
-`;
+// rss2json converts RSS → JSON and is CORS-safe (free, no token needed)
+const RSS2JSON_URL = `https://api.rss2json.com/v1/api.json?rss_url=https://${BLOG_HOST}/rss.xml`;
 
 export default function Writing() {
   const [posts, setPosts] = useState([]);
@@ -35,24 +16,34 @@ export default function Writing() {
   useEffect(() => {
     async function fetchPosts() {
       try {
-        const response = await fetch('https://gql.hashnode.com', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: FETCH_POSTS_QUERY,
-            variables: { host: BLOG_HOST }
-          })
-        });
-        const json = await response.json();
-        
-        if (json.data?.publication?.posts?.edges) {
-          const fetchedPosts = json.data.publication.posts.edges.map(edge => edge.node);
-          setPosts(fetchedPosts);
-        } else {
+        const response = await fetch(RSS2JSON_URL);
+
+        if (!response.ok) {
           setError(true);
+          return;
         }
+
+        const data = await response.json();
+
+        if (data.status !== 'ok') {
+          setError(true);
+          return;
+        }
+
+        const items = (data.items || []).map((item) => ({
+          id: item.guid || item.link,
+          title: item.title?.replace(/^#+\s*/, '').trim(),
+          brief: item.description,
+          coverImage: item.thumbnail ? { url: item.thumbnail } : null,
+          publishedAt: item.pubDate || null,
+          readTimeInMinutes: Math.max(1, Math.round((item.description || '').split(/\s+/).length / 200)),
+          url: item.link,
+          tags: (item.categories || []).map((c) => ({ name: c })),
+        }));
+
+        setPosts(items);
       } catch (err) {
-        console.error("Error fetching Hashnode posts:", err);
+        console.error("Error fetching blog posts:", err);
         setError(true);
       } finally {
         setLoading(false);
