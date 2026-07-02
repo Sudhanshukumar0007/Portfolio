@@ -4,45 +4,8 @@ import NeuralNetBg from '../components/NeuralNetBg';
 import styles from './WritingPage.module.css';
 
 const BLOG_HOST = "backpropdiaries.hashnode.dev";
-const RSS_URL = `https://${BLOG_HOST}/rss.xml`;
-
-// Parse the RSS XML and return an array of post objects
-function parseRSS(xmlText) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlText, 'application/xml');
-
-  // Check for parse errors
-  const parseError = doc.querySelector('parsererror');
-  if (parseError) throw new Error('RSS parse error');
-
-  const items = Array.from(doc.querySelectorAll('channel > item'));
-
-  return items.map((item) => {
-    const getText = (tag) => item.querySelector(tag)?.textContent?.trim() ?? '';
-
-    // Cover image from <enclosure> tag
-    const enclosure = item.querySelector('enclosure');
-    const coverUrl = enclosure?.getAttribute('url') || null;
-
-    // Tags from multiple <category> elements
-    const tags = Array.from(item.querySelectorAll('category')).map((c) => ({
-      name: c.textContent.trim(),
-    }));
-
-    const link = getText('link') || getText('guid');
-    const pubDate = getText('pubDate');
-
-    return {
-      id: link,
-      title: getText('title'),
-      brief: getText('description'),
-      coverImage: coverUrl ? { url: coverUrl } : null,
-      publishedAt: pubDate ? new Date(pubDate).toISOString() : null,
-      url: link,
-      tags,
-    };
-  });
-}
+// rss2json converts RSS → JSON and is CORS-safe (free, no token needed)
+const RSS2JSON_URL = `https://api.rss2json.com/v1/api.json?rss_url=https://${BLOG_HOST}/rss.xml`;
 
 export default function WritingPage() {
   const [posts, setPosts] = useState([]);
@@ -54,25 +17,36 @@ export default function WritingPage() {
 
     async function fetchPosts() {
       try {
-        const response = await fetch(RSS_URL);
+        const response = await fetch(RSS2JSON_URL);
 
         if (!response.ok) {
-          console.error('RSS feed returned status:', response.status);
+          console.error('rss2json returned status:', response.status);
           setError(true);
           return;
         }
 
-        const xmlText = await response.text();
-        const parsed = parseRSS(xmlText);
+        const data = await response.json();
 
-        if (parsed.length === 0) {
-          // Feed exists but no posts yet
-          setPosts([]);
-        } else {
-          setPosts(parsed);
+        if (data.status !== 'ok') {
+          console.error('rss2json error:', data);
+          setError(true);
+          return;
         }
+
+        // Map rss2json fields to the shape our UI expects
+        const items = (data.items || []).map((item) => ({
+          id: item.guid || item.link,
+          title: item.title?.replace(/^#+\s*/, '').trim(), // strip leading markdown # 
+          brief: item.description,
+          coverImage: item.thumbnail ? { url: item.thumbnail } : null,
+          publishedAt: item.pubDate || null,
+          url: item.link,
+          tags: (item.categories || []).map((c) => ({ name: c })),
+        }));
+
+        setPosts(items);
       } catch (err) {
-        console.error('Error fetching RSS feed:', err);
+        console.error('Error fetching blog posts:', err);
         setError(true);
       } finally {
         setLoading(false);
@@ -88,7 +62,7 @@ export default function WritingPage() {
     return new Date(dateString).toLocaleDateString('en-US', options);
   };
 
-  // Estimate reading time from brief (~200 wpm)
+  // Estimate reading time (~200 wpm)
   const estimateReadTime = (text) => {
     if (!text) return null;
     const words = text.trim().split(/\s+/).length;
@@ -216,7 +190,7 @@ export default function WritingPage() {
               </motion.a>
             ))}
 
-            {/* Placeholder cards if fewer than 3 posts */}
+            {/* Placeholder cards to fill row if fewer than 3 posts */}
             {posts.length > 0 &&
               posts.length < 3 &&
               Array.from({ length: 3 - posts.length }).map((_, i) => (
@@ -231,7 +205,7 @@ export default function WritingPage() {
                 </motion.div>
               ))}
 
-            {/* Empty state — blog exists but has no posts */}
+            {/* Empty state */}
             {posts.length === 0 && (
               <motion.div className={styles.emptyState} variants={itemVariants}>
                 <div className={styles.errorIcon}>📝</div>
