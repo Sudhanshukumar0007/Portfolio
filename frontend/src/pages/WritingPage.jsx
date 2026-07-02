@@ -4,6 +4,7 @@ import NeuralNetBg from '../components/NeuralNetBg';
 import styles from './WritingPage.module.css';
 
 const BLOG_HOST = "backpropdiaries.hashnode.dev";
+const HASHNODE_TOKEN = import.meta.env.VITE_HASHNODE_TOKEN;
 
 const FETCH_POSTS_QUERY = `
   query GetPosts($host: String!) {
@@ -37,20 +38,46 @@ export default function WritingPage() {
     
     async function fetchPosts() {
       try {
+        const headers = { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          };
+        if (HASHNODE_TOKEN) {
+          headers['Authorization'] = HASHNODE_TOKEN;
+        }
+
         const response = await fetch('https://gql.hashnode.com', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             query: FETCH_POSTS_QUERY,
             variables: { host: BLOG_HOST }
           })
         });
+
+        // Guard: Hashnode may return HTML if the endpoint is wrong or blog doesn't exist
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          console.error("Hashnode API returned non-JSON response. Content-Type:", contentType);
+          setError(true);
+          return;
+        }
+
         const json = await response.json();
+
+        // Guard: Check for GraphQL errors
+        if (json.errors && json.errors.length > 0) {
+          console.error("Hashnode GraphQL errors:", json.errors);
+          setError(true);
+          return;
+        }
         
         if (json.data?.publication?.posts?.edges) {
           const fetchedPosts = json.data.publication.posts.edges.map(edge => edge.node);
           setPosts(fetchedPosts);
         } else {
+          // publication may be null if the blog host is wrong
+          console.error("Hashnode: publication not found for host:", BLOG_HOST, "Response:", json);
           setError(true);
         }
       } catch (err) {
@@ -116,9 +143,17 @@ export default function WritingPage() {
 
         {!loading && error && (
           <div className={styles.errorContainer}>
-            <a href={`https://${BLOG_HOST}`} target="_blank" rel="noopener noreferrer" className={styles.errorCard}>
-              <div className={styles.errorText}>Read Backprop Diaries on Hashnode &rarr;</div>
-            </a>
+            <div className={styles.errorCard}>
+              <div className={styles.errorIcon}>✍️</div>
+              <h3 className={styles.errorTitle}>Blog feed unavailable</h3>
+              <p className={styles.errorMessage}>
+                Couldn&apos;t load posts from Hashnode right now.<br/>
+                This usually means the blog publication doesn&apos;t exist yet or the host is incorrect.
+              </p>
+              <a href={`https://${BLOG_HOST}`} target="_blank" rel="noopener noreferrer" className={styles.errorLink}>
+                Visit Backprop Diaries →
+              </a>
+            </div>
           </div>
         )}
 
